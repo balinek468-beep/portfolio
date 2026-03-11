@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
 
 type Project = {
+  id?: string;
   title: string;
   role: string;
   description?: string;
@@ -32,24 +34,24 @@ export default function Admin() {
 
   useEffect(()=>{
 
-    const stored = localStorage.getItem("projects");
+    const loadProjects = async () => {
 
-    if(stored){
-      setProjects(JSON.parse(stored));
-    }
+      const { data,error } = await supabase
+        .from("projects")
+        .select("*")
+        .order("created_at",{ascending:false});
+
+      if(error){
+        console.log(error);
+        return;
+      }
+
+      setProjects(data || []);
+    };
+
+    loadProjects();
 
   },[]);
-
-  const saveProjects = (data:Project[]) => {
-
-    try{
-      localStorage.setItem("projects",JSON.stringify(data));
-      setProjects(data);
-    }catch{
-      alert("Storage full. Try using smaller screenshots.");
-    }
-
-  };
 
   const login = () => {
 
@@ -189,35 +191,39 @@ export default function Admin() {
 
   };
 
-  const addProject = () => {
+  const addProject = async () => {
 
-    const newProject:Project = {
-      title,
-      role,
-      description,
-      discord,
-      game,
-      images
-    };
+    const { error } = await supabase
+      .from("projects")
+      .insert([
+        {
+          title,
+          role,
+          description,
+          discord,
+          game,
+          images
+        }
+      ]);
 
-    const updated = [...projects,newProject];
+    if(error){
+      console.log(error);
+      alert("Error adding project");
+      return;
+    }
 
-    saveProjects(updated);
-
-    setTitle("");
-    setRole("");
-    setDescription("");
-    setDiscord("");
-    setGame("");
-    setImages([]);
+    location.reload();
 
   };
 
-  const deleteProject = (index:number) => {
+  const deleteProject = async (id:string) => {
 
-    const updated = projects.filter((_,i)=>i!==index);
+    await supabase
+      .from("projects")
+      .delete()
+      .eq("id",id);
 
-    saveProjects(updated);
+    location.reload();
 
   };
 
@@ -228,18 +234,16 @@ export default function Admin() {
 
   };
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
 
-    if(editingIndex === null || !editProject) return;
+    if(!editProject) return;
 
-    const updated = [...projects];
+    await supabase
+      .from("projects")
+      .update(editProject)
+      .eq("id",editProject.id);
 
-    updated[editingIndex] = editProject;
-
-    saveProjects(updated);
-
-    setEditingIndex(null);
-    setEditProject(null);
+    location.reload();
 
   };
 
@@ -328,7 +332,7 @@ export default function Admin() {
 
       {projects.map((p,i)=>(
 
-        <div key={i} className="card mb-4 flex justify-between items-center">
+        <div key={p.id} className="card mb-4 flex justify-between items-center">
 
           <div>
             <h3 className="font-bold">{p.title}</h3>
@@ -341,7 +345,7 @@ export default function Admin() {
               Edit
             </button>
 
-            <button onClick={()=>deleteProject(i)} className="project-btn-alt">
+            <button onClick={()=>deleteProject(p.id!)} className="project-btn-alt">
               Delete
             </button>
 
@@ -350,49 +354,6 @@ export default function Admin() {
         </div>
 
       ))}
-
-      {editProject && (
-
-        <div className="card mt-10">
-
-          <h2 className="text-xl mb-4">Edit Project</h2>
-
-          <input className="admin-input" value={editProject.title} onChange={e=>setEditProject({...editProject,title:e.target.value})}/>
-
-          <input className="admin-input" value={editProject.role} onChange={e=>setEditProject({...editProject,role:e.target.value})}/>
-
-          <textarea className="admin-input" value={editProject.description} onChange={e=>setEditProject({...editProject,description:e.target.value})}/>
-
-          <div className="drop-zone mt-4" onDrop={handleDropEdit} onDragOver={e=>e.preventDefault()}>
-            <p>Drag images or paste screenshots (max 4)</p>
-          </div>
-
-          <div className="flex gap-4 flex-wrap mt-4">
-
-            {editProject.images?.map((img,i)=>(
-              <div key={i} className="relative">
-
-                <img src={img} className="preview-img"/>
-
-                <button
-                  onClick={()=>removeImage(i)}
-                  className="absolute top-0 right-0 bg-red-500 px-2"
-                >
-                  X
-                </button>
-
-              </div>
-            ))}
-
-          </div>
-
-          <button onClick={saveEdit} className="project-btn mt-4">
-            Save Changes
-          </button>
-
-        </div>
-
-      )}
 
     </div>
 

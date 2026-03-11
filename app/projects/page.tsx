@@ -6,8 +6,10 @@ import Link from "next/link";
 import Navbar from "../components/Navbar";
 import CursorGlow from "../components/CursorGlow";
 import MeshBackground from "../components/MeshBackground";
+import { supabase } from "../lib/supabase";
 
 type Project = {
+  id: string;
   title: string;
   role: string;
   description?: string;
@@ -22,11 +24,22 @@ export default function Projects() {
 
   useEffect(() => {
 
-    const stored = localStorage.getItem("projects");
+    const loadProjects = async () => {
 
-    if (stored) {
-      setProjects(JSON.parse(stored));
-    }
+      const { data, error } = await supabase
+        .from("projects")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error(error);
+        return;
+      }
+
+      setProjects(data || []);
+    };
+
+    loadProjects();
 
   }, []);
 
@@ -57,12 +70,12 @@ export default function Projects() {
           {projects.map((p, i) => (
 
             <div
-              key={i}
+              key={p.id}
               className="rounded-xl overflow-hidden border border-white/10
               bg-white/5 backdrop-blur-md hover:border-white/20 transition"
             >
 
-              <Link href={`/projects/${i}`} className="block">
+              <Link href={`/projects/${p.id}`} className="block">
 
                 {p.images?.[0] && (
                   <img

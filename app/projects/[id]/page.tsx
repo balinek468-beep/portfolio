@@ -6,8 +6,10 @@ import { useParams } from "next/navigation";
 import Navbar from "../../components/Navbar";
 import CursorGlow from "../../components/CursorGlow";
 import MeshBackground from "../../components/MeshBackground";
+import { supabase } from "../../lib/supabase";
 
 type Project = {
+  id: string;
   title: string;
   role: string;
   description?: string;
@@ -19,27 +21,34 @@ type Project = {
 export default function ProjectPage() {
 
   const params = useParams();
-  const id = Number(params.id);
+  const id = params.id as string;
 
   const [project,setProject] = useState<Project | null>(null);
   const [activeImage,setActiveImage] = useState<string | null>(null);
 
   useEffect(()=>{
 
-    const stored = localStorage.getItem("projects");
+    const loadProject = async () => {
 
-    if(stored){
+      const { data,error } = await supabase
+        .from("projects")
+        .select("*")
+        .eq("id", id)
+        .single();
 
-      const data:Project[] = JSON.parse(stored);
-
-      const p = data[id];
-
-      if(p){
-        setProject(p);
-        setActiveImage(p.images?.[0] || null);
+      if(error){
+        console.log(error);
+        return;
       }
 
-    }
+      if(data){
+        setProject(data);
+        setActiveImage(data.images?.[0] || null);
+      }
+
+    };
+
+    loadProject();
 
   },[id]);
 
