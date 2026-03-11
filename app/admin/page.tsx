@@ -1,362 +1,303 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "../lib/supabase";
 
 type Project = {
-  id?: string;
-  title: string;
-  role: string;
-  description?: string;
-  discord: string;
-  game: string;
-  images?: string[];
+id?: string;
+title: string;
+role: string;
+description?: string;
+discord: string;
+game: string;
+images?: string[];
+created_at?: string;
 };
 
 export default function Admin() {
 
-  const ADMIN_PASSWORD = "balinadmin123";
+const ADMIN_PASSWORD = "balinadmin123";
 
-  const [password,setPassword] = useState("");
-  const [loggedIn,setLoggedIn] = useState(false);
+const [password,setPassword] = useState("");
+const [loggedIn,setLoggedIn] = useState(false);
 
-  const [title,setTitle] = useState("");
-  const [role,setRole] = useState("");
-  const [description,setDescription] = useState("");
-  const [discord,setDiscord] = useState("");
-  const [game,setGame] = useState("");
+const [title,setTitle] = useState("");
+const [role,setRole] = useState("");
+const [description,setDescription] = useState("");
+const [discord,setDiscord] = useState("");
+const [game,setGame] = useState("");
 
-  const [images,setImages] = useState<string[]>([]);
-  const [projects,setProjects] = useState<Project[]>([]);
+const [images,setImages] = useState<string[]>([]);
+const [projects,setProjects] = useState<Project[]>([]);
 
-  const [editingIndex,setEditingIndex] = useState<number|null>(null);
-  const [editProject,setEditProject] = useState<Project|null>(null);
+const [editingIndex,setEditingIndex] = useState<number|null>(null);
+const [editProject,setEditProject] = useState<Project|null>(null);
 
-  useEffect(()=>{
+useEffect(()=>{
 
-    const loadProjects = async () => {
+loadProjects();
 
-      const { data,error } = await supabase
-        .from("projects")
-        .select("*")
-        .order("created_at",{ascending:false});
+},[]);
 
-      if(error){
-        console.log(error);
-        return;
-      }
+const loadProjects = async () => {
 
-      setProjects(data || []);
-    };
+const { data,error } = await supabase
+.from("projects")
+.select("*")
+.order("created_at",{ascending:false});
 
-    loadProjects();
+if(error){
+console.log(error);
+return;
+}
 
-  },[]);
+setProjects(data || []);
 
-  const login = () => {
+};
 
-    if(password === ADMIN_PASSWORD){
-      setLoggedIn(true);
-    }else{
-      alert("Wrong password");
-    }
+const login = () => {
 
-  };
+if(password === ADMIN_PASSWORD){
+setLoggedIn(true);
+}else{
+alert("Wrong password");
+}
 
-  const compressImage = (file:File):Promise<string> => {
+};
 
-    return new Promise((resolve)=>{
+const compressImage = (file:File):Promise<string> => {
 
-      const img = new Image();
-      const reader = new FileReader();
+return new Promise((resolve)=>{
 
-      reader.onload = e => {
-        img.src = e.target?.result as string;
-      };
+const img = new Image();
+const reader = new FileReader();
 
-      img.onload = () => {
+reader.onload = e => {
+img.src = e.target?.result as string;
+};
 
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d")!;
+img.onload = () => {
 
-        const MAX_WIDTH = 1200;
+const canvas = document.createElement("canvas");
+const ctx = canvas.getContext("2d")!;
 
-        let width = img.width;
-        let height = img.height;
+const MAX_WIDTH = 1200;
 
-        if(width > MAX_WIDTH){
-          height *= MAX_WIDTH / width;
-          width = MAX_WIDTH;
-        }
+let width = img.width;
+let height = img.height;
 
-        canvas.width = width;
-        canvas.height = height;
+if(width > MAX_WIDTH){
+height *= MAX_WIDTH / width;
+width = MAX_WIDTH;
+}
 
-        ctx.drawImage(img,0,0,width,height);
+canvas.width = width;
+canvas.height = height;
 
-        const compressed = canvas.toDataURL("image/jpeg",0.7);
+ctx.drawImage(img,0,0,width,height);
 
-        resolve(compressed);
+const compressed = canvas.toDataURL("image/jpeg",0.7);
 
-      };
+resolve(compressed);
 
-      reader.readAsDataURL(file);
+};
 
-    });
+reader.readAsDataURL(file);
 
-  };
+});
 
-  const addImage = async (file:File) => {
+};
 
-    if(images.length >= 4){
-      alert("Max 4 images");
-      return;
-    }
+const addImage = async (file:File) => {
 
-    const compressed = await compressImage(file);
+if(images.length >= 4){
+alert("Max 4 images");
+return;
+}
 
-    setImages(prev => [...prev,compressed]);
+const compressed = await compressImage(file);
 
-  };
+setImages(prev => [...prev,compressed]);
 
-  const addImageToEdit = async (file:File) => {
+};
 
-    if(!editProject) return;
+const handleDropAdd = (e:React.DragEvent) => {
 
-    const current = editProject.images || [];
+e.preventDefault();
 
-    if(current.length >= 4){
-      alert("Max 4 images");
-      return;
-    }
+const files = Array.from(e.dataTransfer.files);
 
-    const compressed = await compressImage(file);
+files.forEach(file=>{
+if(file.type.includes("image")){
+addImage(file);
+}
+});
 
-    setEditProject({
-      ...editProject,
-      images:[...current,compressed]
-    });
+};
 
-  };
+const handlePaste = (e:React.ClipboardEvent) => {
 
-  const handleDropAdd = (e:React.DragEvent) => {
+const items = e.clipboardData.items;
 
-    e.preventDefault();
+for(const item of items){
 
-    const files = Array.from(e.dataTransfer.files);
+if(item.type.includes("image")){
 
-    files.forEach(file=>{
-      if(file.type.includes("image")){
-        addImage(file);
-      }
-    });
+const file = item.getAsFile();
 
-  };
+if(!file) continue;
 
-  const handleDropEdit = (e:React.DragEvent) => {
+addImage(file);
 
-    e.preventDefault();
+}
 
-    const files = Array.from(e.dataTransfer.files);
+}
 
-    files.forEach(file=>{
-      if(file.type.includes("image")){
-        addImageToEdit(file);
-      }
-    });
+};
 
-  };
+const addProject = async () => {
 
-  const handlePaste = (e:React.ClipboardEvent) => {
+const { data,error } = await supabase
+.from("projects")
+.insert([
+{
+title,
+role,
+description,
+discord,
+game,
+images,
+created_at:new Date()
+}
+])
+.select();
 
-    const items = e.clipboardData.items;
+if(error){
+console.log(error);
+alert("Error adding project");
+return;
+}
 
-    for(const item of items){
+if(data){
+setProjects(prev => [data[0],...prev]);
+}
 
-      if(item.type.includes("image")){
+setTitle("");
+setRole("");
+setDescription("");
+setDiscord("");
+setGame("");
+setImages([]);
 
-        const file = item.getAsFile();
+};
 
-        if(!file) continue;
+const deleteProject = async (id:string) => {
 
-        if(editProject){
-          addImageToEdit(file);
-        }else{
-          addImage(file);
-        }
+await supabase
+.from("projects")
+.delete()
+.eq("id",id);
 
-      }
+setProjects(prev => prev.filter(p => p.id !== id));
 
-    }
+};
 
-  };
+if(!loggedIn){
 
-  const addProject = async () => {
+return(
 
-    const { error } = await supabase
-      .from("projects")
-      .insert([
-        {
-          title,
-          role,
-          description,
-          discord,
-          game,
-          images
-        }
-      ]);
+<div className="min-h-screen flex items-center justify-center gradient-bg text-white">
 
-    if(error){
-      console.log(error);
-      alert("Error adding project");
-      return;
-    }
+<div className="card w-96 text-center">
 
-    location.reload();
+<h2 className="text-2xl mb-6">Admin Login</h2>
 
-  };
+<input
+type="password"
+placeholder="Password"
+value={password}
+onChange={e=>setPassword(e.target.value)}
+className="admin-input"
+/>
 
-  const deleteProject = async (id:string) => {
+<button onClick={login} className="project-btn mt-4">
+Login
+</button>
 
-    await supabase
-      .from("projects")
-      .delete()
-      .eq("id",id);
+</div>
 
-    location.reload();
+</div>
 
-  };
+);
 
-  const startEdit = (index:number) => {
+}
 
-    setEditingIndex(index);
-    setEditProject({...projects[index]});
+return(
 
-  };
+<div className="min-h-screen gradient-bg text-white p-10" onPaste={handlePaste}>
 
-  const saveEdit = async () => {
+<h1 className="text-4xl mb-10">Admin Panel</h1>
 
-    if(!editProject) return;
+<div className="card max-w-xl mb-12">
 
-    await supabase
-      .from("projects")
-      .update(editProject)
-      .eq("id",editProject.id);
+<h2 className="text-xl mb-4">Add Project</h2>
 
-    location.reload();
+<input className="admin-input" placeholder="Title" value={title} onChange={e=>setTitle(e.target.value)} />
 
-  };
+<input className="admin-input" placeholder="Role" value={role} onChange={e=>setRole(e.target.value)} />
 
-  const removeImage = (index:number) => {
+<textarea className="admin-input" placeholder="Description" value={description} onChange={e=>setDescription(e.target.value)} />
 
-    if(!editProject) return;
+<input className="admin-input" placeholder="Discord link" value={discord} onChange={e=>setDiscord(e.target.value)} />
 
-    const updated = editProject.images?.filter((_,i)=>i!==index);
+<input className="admin-input" placeholder="Game link" value={game} onChange={e=>setGame(e.target.value)} />
 
-    setEditProject({
-      ...editProject,
-      images:updated
-    });
+<div className="drop-zone" onDrop={handleDropAdd} onDragOver={e=>e.preventDefault()}>
+<p>Drag images or paste screenshots (max 4)</p>
+</div>
 
-  };
+<div className="flex gap-4 mt-4 flex-wrap">
 
-  if(!loggedIn){
+{images.map((img,i)=>(
+<img key={i} src={img} className="preview-img"/>
+))}
 
-    return(
+</div>
 
-      <div className="min-h-screen flex items-center justify-center gradient-bg text-white">
+<button onClick={addProject} className="project-btn mt-4">
+Add Project
+</button>
 
-        <div className="card w-96 text-center">
+</div>
 
-          <h2 className="text-2xl mb-6">Admin Login</h2>
+<h2 className="text-2xl mb-6">Existing Projects</h2>
 
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={e=>setPassword(e.target.value)}
-            className="admin-input"
-          />
+{projects.map((p)=>(
 
-          <button onClick={login} className="project-btn mt-4">
-            Login
-          </button>
+<div key={p.id} className="card mb-4 flex justify-between items-center">
 
-        </div>
+<div>
+<h3 className="font-bold">{p.title}</h3>
+<p className="text-gray-400">{p.role}</p>
+</div>
 
-      </div>
+<div className="flex gap-3">
 
-    );
+<button
+onClick={()=>deleteProject(p.id!)}
+className="project-btn-alt"
+>
+Delete
+</button>
 
-  }
+</div>
 
-  return(
+</div>
 
-    <div className="min-h-screen gradient-bg text-white p-10" onPaste={handlePaste}>
+))}
 
-      <h1 className="text-4xl mb-10">Admin Panel</h1>
+</div>
 
-      <div className="card max-w-xl mb-12">
-
-        <h2 className="text-xl mb-4">Add Project</h2>
-
-        <input className="admin-input" placeholder="Title" value={title} onChange={e=>setTitle(e.target.value)} />
-
-        <input className="admin-input" placeholder="Role" value={role} onChange={e=>setRole(e.target.value)} />
-
-        <textarea className="admin-input" placeholder="Description" value={description} onChange={e=>setDescription(e.target.value)} />
-
-        <input className="admin-input" placeholder="Discord link" value={discord} onChange={e=>setDiscord(e.target.value)} />
-
-        <input className="admin-input" placeholder="Game link" value={game} onChange={e=>setGame(e.target.value)} />
-
-        <div className="drop-zone" onDrop={handleDropAdd} onDragOver={e=>e.preventDefault()}>
-          <p>Drag images or paste screenshots (max 4)</p>
-        </div>
-
-        <div className="flex gap-4 mt-4 flex-wrap">
-
-          {images.map((img,i)=>(
-            <img key={i} src={img} className="preview-img"/>
-          ))}
-
-        </div>
-
-        <button onClick={addProject} className="project-btn mt-4">
-          Add Project
-        </button>
-
-      </div>
-
-      <h2 className="text-2xl mb-6">Existing Projects</h2>
-
-      {projects.map((p,i)=>(
-
-        <div key={p.id} className="card mb-4 flex justify-between items-center">
-
-          <div>
-            <h3 className="font-bold">{p.title}</h3>
-            <p className="text-gray-400">{p.role}</p>
-          </div>
-
-          <div className="flex gap-3">
-
-            <button onClick={()=>startEdit(i)} className="project-btn">
-              Edit
-            </button>
-
-            <button onClick={()=>deleteProject(p.id!)} className="project-btn-alt">
-              Delete
-            </button>
-
-          </div>
-
-        </div>
-
-      ))}
-
-    </div>
-
-  );
+);
 
 }
