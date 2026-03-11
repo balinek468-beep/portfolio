@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import Link from "next/link";
 
 function MagneticButton({
@@ -50,45 +50,23 @@ function MagneticButton({
 }
 
 export default function Navbar() {
-
-  const [show,setShow] = useState(false);
-
   return (
+    <nav
+      className="fixed top-0 left-0 w-full flex justify-between items-center
+      px-10 py-5 bg-black/60 backdrop-blur-xl border-b border-white/10
+      text-white z-50"
+    >
+      <Link href="/" className="text-xl font-bold tracking-wide">
+        Balin
+      </Link>
 
-    <>
-    
-      {/* HOVER ZONE */}
-
-      <div
-        className="fixed top-0 left-0 w-full h-6 z-50"
-        onMouseEnter={()=>setShow(true)}
-      />
-
-      <nav
-        onMouseLeave={()=>setShow(false)}
-        className={`fixed top-0 left-0 w-full flex justify-between items-center
-        px-10 py-5 bg-black/60 backdrop-blur-xl border-b border-white/10
-        text-white z-50 transition-transform duration-300
-        ${show ? "translate-y-0" : "-translate-y-full"}`}
-      >
-
-        <Link href="/" className="text-xl font-bold tracking-wide">
-          Balin
-        </Link>
-
-        <div className="flex gap-4">
-
-          <MagneticButton href="/">Home</MagneticButton>
-          <MagneticButton href="/projects">Projects</MagneticButton>
-          <MagneticButton href="/about">About</MagneticButton>
-          <MagneticButton href="/contact">Contact</MagneticButton>
-          <MagneticButton href="/tos">TOS</MagneticButton>
-
-        </div>
-
-      </nav>
-
-    </>
-
+      <div className="flex gap-4">
+        <MagneticButton href="/">Home</MagneticButton>
+        <MagneticButton href="/projects">Projects</MagneticButton>
+        <MagneticButton href="/about">About</MagneticButton>
+        <MagneticButton href="/contact">Contact</MagneticButton>
+        <MagneticButton href="/tos">TOS</MagneticButton>
+      </div>
+    </nav>
   );
 }
