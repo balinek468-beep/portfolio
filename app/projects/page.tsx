@@ -32,9 +32,10 @@ export default function Projects() {
         .order("created_at", { ascending: false });
 
       if (error) {
-        console.error(error);
-        return;
-      }
+  console.log("SUPABASE ERROR:", error);
+  alert(JSON.stringify(error));
+  return;
+}
 
       setProjects(data || []);
     };
