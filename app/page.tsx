@@ -20,7 +20,7 @@ export default function Home() {
       <section className="min-h-screen flex flex-col items-center justify-center px-6 text-center pt-24">
 
         <h1 className="text-7xl md:text-8xl font-bold mb-16 animated-title">
-          Balin's Portfolio
+          Balin&apos;s Portfolio
         </h1>
 
         <div className="grid md:grid-cols-3 gap-10 max-w-6xl w-full mb-10">

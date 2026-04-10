@@ -173,7 +173,7 @@ export default function TosPage() {
             </p>
 
             <p>
-              If a percentage of the game's revenue is offered, the monthly
+              If a percentage of the game&apos;s revenue is offered, the monthly
               management price may be reduced depending on the size of the
               revenue share.
             </p>

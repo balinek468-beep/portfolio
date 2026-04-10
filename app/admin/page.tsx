@@ -1,303 +1,605 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { supabase } from "../lib/supabase";
+import {
+  type ChangeEvent,
+  type ClipboardEvent,
+  type DragEvent,
+  type FormEvent,
+  useEffect,
+  useState,
+} from "react";
+import {
+  createProject,
+  deleteProjectById,
+  fetchProjects,
+  updateProject,
+  type Project,
+  type ProjectInput,
+} from "../lib/projects";
 
-type Project = {
-id?: string;
-title: string;
-role: string;
-description?: string;
-discord: string;
-game: string;
-images?: string[];
-created_at?: string;
+const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "balinadmin123";
+const SESSION_KEY = "portfolio-admin-session";
+const MAX_IMAGES = 4;
+
+const emptyForm: ProjectInput = {
+  title: "",
+  role: "",
+  description: "",
+  discord: "",
+  game: "",
+  images: [],
 };
+
+type FormErrors = Partial<Record<keyof ProjectInput, string>>;
 
 export default function Admin() {
+  const [password, setPassword] = useState("");
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [form, setForm] = useState<ProjectInput>(emptyForm);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
-const ADMIN_PASSWORD = "balinadmin123";
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
 
-const [password,setPassword] = useState("");
-const [loggedIn,setLoggedIn] = useState(false);
+    const storedSession = window.sessionStorage.getItem(SESSION_KEY);
+    if (storedSession === "ok") {
+      setLoggedIn(true);
+    }
+  }, []);
 
-const [title,setTitle] = useState("");
-const [role,setRole] = useState("");
-const [description,setDescription] = useState("");
-const [discord,setDiscord] = useState("");
-const [game,setGame] = useState("");
+  useEffect(() => {
+    if (!loggedIn) {
+      setIsLoading(false);
+      return;
+    }
 
-const [images,setImages] = useState<string[]>([]);
-const [projects,setProjects] = useState<Project[]>([]);
+    void loadProjects();
+  }, [loggedIn]);
 
-const [editingIndex,setEditingIndex] = useState<number|null>(null);
-const [editProject,setEditProject] = useState<Project|null>(null);
+  async function loadProjects() {
+    setIsLoading(true);
+    const { data, error } = await fetchProjects();
 
-useEffect(()=>{
+    if (error) {
+      console.error(error);
+      setStatusMessage(getReadableErrorMessage(error, "Could not load projects from Supabase."));
+      setIsLoading(false);
+      return;
+    }
 
-loadProjects();
+    setProjects(data || []);
+    setIsLoading(false);
+  }
 
-},[]);
+  function updateField<K extends keyof ProjectInput>(field: K, value: ProjectInput[K]) {
+    setForm((current) => ({ ...current, [field]: value }));
+    setErrors((current) => ({ ...current, [field]: undefined }));
+    setStatusMessage(null);
+  }
 
-const loadProjects = async () => {
+  function resetForm() {
+    setForm(emptyForm);
+    setEditingId(null);
+    setErrors({});
+    setStatusMessage(null);
+  }
 
-const { data,error } = await supabase
-.from("projects")
-.select("*")
-.order("created_at",{ascending:false});
+  function validateForm(values: ProjectInput) {
+    const nextErrors: FormErrors = {};
 
-if(error){
-console.log(error);
-return;
+    if (!values.title.trim()) {
+      nextErrors.title = "Title is required.";
+    }
+
+    if (!values.role.trim()) {
+      nextErrors.role = "Role is required.";
+    }
+
+    if (values.discord.trim() && !isValidUrl(values.discord)) {
+      nextErrors.discord = "Discord link must be a valid URL.";
+    }
+
+    if (values.game.trim() && !isValidUrl(values.game)) {
+      nextErrors.game = "Game link must be a valid URL.";
+    }
+
+    if (values.images.length > MAX_IMAGES) {
+      nextErrors.images = `You can upload up to ${MAX_IMAGES} images.`;
+    }
+
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  }
+
+  function login() {
+    if (password === ADMIN_PASSWORD) {
+      setLoggedIn(true);
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(SESSION_KEY, "ok");
+      }
+      setStatusMessage(null);
+      return;
+    }
+
+    setStatusMessage("Wrong password.");
+  }
+
+  function logout() {
+    setLoggedIn(false);
+    setPassword("");
+    resetForm();
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(SESSION_KEY);
+    }
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!validateForm(form)) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    setStatusMessage(null);
+
+    const request = editingId
+      ? updateProject(editingId, form)
+      : createProject(form);
+
+    const { data, error } = await request;
+
+    if (error) {
+      console.error(error);
+      setStatusMessage(
+        getReadableErrorMessage(
+          error,
+          editingId ? "Could not update project." : "Could not create project.",
+        ),
+      );
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (data) {
+      setProjects((current) => {
+        if (editingId) {
+          return current.map((project) => (project.id === editingId ? data : project));
+        }
+
+        return [data, ...current];
+      });
+    }
+
+    resetForm();
+    setStatusMessage(editingId ? "Project updated." : "Project created.");
+    setIsSubmitting(false);
+  }
+
+  async function handleDelete(id: string) {
+    setDeletingId(id);
+    setStatusMessage(null);
+
+    const { error } = await deleteProjectById(id);
+
+    if (error) {
+      console.error(error);
+      setStatusMessage(getReadableErrorMessage(error, "Could not delete project."));
+      setDeletingId(null);
+      return;
+    }
+
+    setProjects((current) => current.filter((project) => project.id !== id));
+
+    if (editingId === id) {
+      resetForm();
+    }
+
+    setStatusMessage("Project deleted.");
+    setDeletingId(null);
+  }
+
+  function startEditing(project: Project) {
+    setEditingId(project.id);
+    setForm({
+      title: project.title,
+      role: project.role,
+      description: project.description || "",
+      discord: project.discord || "",
+      game: project.game || "",
+      images: project.images || [],
+    });
+    setErrors({});
+    setStatusMessage(`Editing "${project.title}".`);
+  }
+
+  async function handleFiles(files: File[]) {
+    const imageFiles = files.filter((file) => file.type.startsWith("image/"));
+
+    if (!imageFiles.length) {
+      setStatusMessage("Only image files can be added.");
+      return;
+    }
+
+    const remainingSlots = MAX_IMAGES - form.images.length;
+    if (remainingSlots <= 0) {
+      setErrors((current) => ({
+        ...current,
+        images: `You can upload up to ${MAX_IMAGES} images.`,
+      }));
+      return;
+    }
+
+    const nextImages = await Promise.all(
+      imageFiles.slice(0, remainingSlots).map((file) => compressImage(file)),
+    );
+
+    updateField("images", [...form.images, ...nextImages]);
+  }
+
+  function handleFileInput(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files || []);
+    void handleFiles(files);
+    event.target.value = "";
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    void handleFiles(Array.from(event.dataTransfer.files));
+  }
+
+  function removeImage(index: number) {
+    updateField(
+      "images",
+      form.images.filter((_, currentIndex) => currentIndex !== index),
+    );
+  }
+
+  if (!loggedIn) {
+    return (
+      <div className="min-h-screen flex items-center justify-center gradient-bg text-white px-6">
+        <div className="card w-full max-w-md text-left">
+          <h1 className="text-3xl font-bold mb-3">Admin Login</h1>
+          <p className="text-sm text-gray-300 mb-6">
+            This panel is connected to Supabase and updates the live project list.
+          </p>
+
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                login();
+              }
+            }}
+            className="admin-input"
+          />
+
+          {statusMessage && (
+            <p className="text-sm text-red-300 mb-4">{statusMessage}</p>
+          )}
+
+          <button onClick={login} className="project-btn mt-2">
+            Login
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen gradient-bg text-white px-6 py-10 md:px-10" onPaste={handlePaste}>
+      <div className="max-w-7xl mx-auto">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-10">
+          <div>
+            <h1 className="text-4xl font-bold">Admin Panel</h1>
+            <p className="text-gray-300 mt-2">
+              Manage portfolio projects stored in Supabase.
+            </p>
+          </div>
+
+          <div className="flex gap-3">
+            <button onClick={resetForm} className="project-btn-alt">
+              New project
+            </button>
+            <button onClick={logout} className="project-btn-alt">
+              Logout
+            </button>
+          </div>
+        </div>
+
+        {statusMessage && (
+          <div className="mb-6 rounded-2xl border border-white/15 bg-white/8 px-4 py-3 text-sm text-gray-200 backdrop-blur-md">
+            {statusMessage}
+          </div>
+        )}
+
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+          <form className="card !text-left" onSubmit={handleSubmit}>
+            <div className="flex items-center justify-between gap-4 mb-6">
+              <div>
+                <h2 className="text-2xl font-semibold">
+                  {editingId ? "Edit Project" : "Add Project"}
+                </h2>
+                <p className="text-sm text-gray-300 mt-2">
+                  Paste screenshots, drag images, or pick files manually.
+                </p>
+              </div>
+
+              {editingId && (
+                <button type="button" onClick={resetForm} className="project-btn-alt">
+                  Cancel edit
+                </button>
+              )}
+            </div>
+
+            <label className="block mb-4">
+              <span className="block text-sm text-gray-300 mb-2">Title</span>
+              <input
+                className="admin-input"
+                placeholder="Project title"
+                value={form.title}
+                onChange={(event) => updateField("title", event.target.value)}
+              />
+              {errors.title && <span className="text-sm text-red-300">{errors.title}</span>}
+            </label>
+
+            <label className="block mb-4">
+              <span className="block text-sm text-gray-300 mb-2">Role</span>
+              <input
+                className="admin-input"
+                placeholder="Project manager, game designer..."
+                value={form.role}
+                onChange={(event) => updateField("role", event.target.value)}
+              />
+              {errors.role && <span className="text-sm text-red-300">{errors.role}</span>}
+            </label>
+
+            <label className="block mb-4">
+              <span className="block text-sm text-gray-300 mb-2">Description</span>
+              <textarea
+                className="admin-input min-h-32"
+                placeholder="Short project summary"
+                value={form.description}
+                onChange={(event) => updateField("description", event.target.value)}
+              />
+            </label>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="block mb-4">
+                <span className="block text-sm text-gray-300 mb-2">Discord link</span>
+                <input
+                  className="admin-input"
+                  placeholder="https://..."
+                  value={form.discord}
+                  onChange={(event) => updateField("discord", event.target.value)}
+                />
+                {errors.discord && (
+                  <span className="text-sm text-red-300">{errors.discord}</span>
+                )}
+              </label>
+
+              <label className="block mb-4">
+                <span className="block text-sm text-gray-300 mb-2">Game link</span>
+                <input
+                  className="admin-input"
+                  placeholder="https://..."
+                  value={form.game}
+                  onChange={(event) => updateField("game", event.target.value)}
+                />
+                {errors.game && <span className="text-sm text-red-300">{errors.game}</span>}
+              </label>
+            </div>
+
+            <div
+              className="drop-zone"
+              onDrop={handleDrop}
+              onDragOver={(event) => event.preventDefault()}
+            >
+              <p className="text-base font-medium">Drop images here</p>
+              <p className="text-sm text-gray-300 mt-2">
+                Max {MAX_IMAGES} images. They will be compressed in the browser.
+              </p>
+
+              <label className="inline-block mt-4 cursor-pointer project-btn-alt">
+                Choose files
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={handleFileInput}
+                />
+              </label>
+            </div>
+
+            {errors.images && (
+              <p className="text-sm text-red-300 mt-3">{errors.images}</p>
+            )}
+
+            <div className="grid gap-4 mt-6 sm:grid-cols-2">
+              {form.images.map((image, index) => (
+                <div
+                  key={`${image.slice(0, 20)}-${index}`}
+                  className="rounded-2xl overflow-hidden border border-white/10 bg-black/20"
+                >
+                  <img src={image} alt={`Preview ${index + 1}`} className="preview-img h-48 w-full object-cover" />
+                  <div className="p-3 flex items-center justify-between gap-3">
+                    <span className="text-sm text-gray-300">Image {index + 1}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeImage(index)}
+                      className="project-btn-alt"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <button type="submit" disabled={isSubmitting} className="project-btn mt-6">
+              {isSubmitting ? "Saving..." : editingId ? "Save Changes" : "Add Project"}
+            </button>
+          </form>
+
+          <section className="card !text-left">
+            <div className="flex items-center justify-between gap-4 mb-6">
+              <div>
+                <h2 className="text-2xl font-semibold">Existing Projects</h2>
+                <p className="text-sm text-gray-300 mt-2">
+                  Click edit to load a project back into the form.
+                </p>
+              </div>
+              <span className="text-sm text-gray-400">{projects.length} total</span>
+            </div>
+
+            {isLoading && <p className="text-gray-300">Loading projects...</p>}
+
+            {!isLoading && projects.length === 0 && (
+              <p className="text-gray-400">No projects yet.</p>
+            )}
+
+            <div className="space-y-4">
+              {projects.map((project) => (
+                <div
+                  key={project.id}
+                  className="rounded-2xl border border-white/12 bg-white/6 p-4 backdrop-blur-md"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h3 className="text-lg font-semibold">{project.title}</h3>
+                      <p className="text-sm text-indigo-200 mt-1">{project.role}</p>
+                      {project.description && (
+                        <p className="text-sm text-gray-300 mt-3 line-clamp-3">
+                          {project.description}
+                        </p>
+                      )}
+                    </div>
+
+                    {project.images?.[0] && (
+                      <img
+                        src={project.images[0]}
+                        alt={project.title}
+                        className="h-20 w-28 rounded-xl object-cover border border-white/10"
+                      />
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-3 mt-4">
+                    <button onClick={() => startEditing(project)} className="project-btn" type="button">
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(project.id)}
+                      className="project-btn-alt"
+                      type="button"
+                      disabled={deletingId === project.id}
+                    >
+                      {deletingId === project.id ? "Deleting..." : "Delete"}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+
+  function handlePaste(event: ClipboardEvent<HTMLDivElement>) {
+    const files: File[] = [];
+
+    for (const item of Array.from(event.clipboardData.items)) {
+      if (item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) {
+          files.push(file);
+        }
+      }
+    }
+
+    if (files.length) {
+      void handleFiles(files);
+    }
+  }
 }
 
-setProjects(data || []);
-
-};
-
-const login = () => {
-
-if(password === ADMIN_PASSWORD){
-setLoggedIn(true);
-}else{
-alert("Wrong password");
+function isValidUrl(value: string) {
+  try {
+    new URL(value);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-};
+function compressImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    const image = new Image();
 
-const compressImage = (file:File):Promise<string> => {
+    reader.onload = (event) => {
+      image.src = event.target?.result as string;
+    };
 
-return new Promise((resolve)=>{
+    reader.onerror = () => reject(new Error("Could not read file."));
+    image.onerror = () => reject(new Error("Could not load image."));
 
-const img = new Image();
-const reader = new FileReader();
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d");
 
-reader.onload = e => {
-img.src = e.target?.result as string;
-};
+      if (!context) {
+        reject(new Error("Could not create canvas context."));
+        return;
+      }
 
-img.onload = () => {
+      const maxWidth = 1400;
+      let width = image.width;
+      let height = image.height;
 
-const canvas = document.createElement("canvas");
-const ctx = canvas.getContext("2d")!;
+      if (width > maxWidth) {
+        height *= maxWidth / width;
+        width = maxWidth;
+      }
 
-const MAX_WIDTH = 1200;
+      canvas.width = width;
+      canvas.height = height;
+      context.drawImage(image, 0, 0, width, height);
 
-let width = img.width;
-let height = img.height;
+      resolve(canvas.toDataURL("image/jpeg", 0.78));
+    };
 
-if(width > MAX_WIDTH){
-height *= MAX_WIDTH / width;
-width = MAX_WIDTH;
+    reader.readAsDataURL(file);
+  });
 }
 
-canvas.width = width;
-canvas.height = height;
+function getReadableErrorMessage(error: { message?: string; details?: string }, fallback: string) {
+  const combined = [error.message, error.details].filter(Boolean).join(" ");
 
-ctx.drawImage(img,0,0,width,height);
+  if (combined.includes("fetch failed") || combined.includes("ENOTFOUND")) {
+    return "Supabase connection failed. Check NEXT_PUBLIC_SUPABASE_URL and project status.";
+  }
 
-const compressed = canvas.toDataURL("image/jpeg",0.7);
+  if (combined.includes("row-level security")) {
+    return "Supabase blocked the action because RLS policy does not allow it.";
+  }
 
-resolve(compressed);
+  if (combined.includes("JWT")) {
+    return "Supabase key is invalid or expired. Check NEXT_PUBLIC_SUPABASE_ANON_KEY.";
+  }
 
-};
-
-reader.readAsDataURL(file);
-
-});
-
-};
-
-const addImage = async (file:File) => {
-
-if(images.length >= 4){
-alert("Max 4 images");
-return;
-}
-
-const compressed = await compressImage(file);
-
-setImages(prev => [...prev,compressed]);
-
-};
-
-const handleDropAdd = (e:React.DragEvent) => {
-
-e.preventDefault();
-
-const files = Array.from(e.dataTransfer.files);
-
-files.forEach(file=>{
-if(file.type.includes("image")){
-addImage(file);
-}
-});
-
-};
-
-const handlePaste = (e:React.ClipboardEvent) => {
-
-const items = e.clipboardData.items;
-
-for(const item of items){
-
-if(item.type.includes("image")){
-
-const file = item.getAsFile();
-
-if(!file) continue;
-
-addImage(file);
-
-}
-
-}
-
-};
-
-const addProject = async () => {
-
-const { data,error } = await supabase
-.from("projects")
-.insert([
-{
-title,
-role,
-description,
-discord,
-game,
-images,
-created_at:new Date()
-}
-])
-.select();
-
-if(error){
-console.log(error);
-alert("Error adding project");
-return;
-}
-
-if(data){
-setProjects(prev => [data[0],...prev]);
-}
-
-setTitle("");
-setRole("");
-setDescription("");
-setDiscord("");
-setGame("");
-setImages([]);
-
-};
-
-const deleteProject = async (id:string) => {
-
-await supabase
-.from("projects")
-.delete()
-.eq("id",id);
-
-setProjects(prev => prev.filter(p => p.id !== id));
-
-};
-
-if(!loggedIn){
-
-return(
-
-<div className="min-h-screen flex items-center justify-center gradient-bg text-white">
-
-<div className="card w-96 text-center">
-
-<h2 className="text-2xl mb-6">Admin Login</h2>
-
-<input
-type="password"
-placeholder="Password"
-value={password}
-onChange={e=>setPassword(e.target.value)}
-className="admin-input"
-/>
-
-<button onClick={login} className="project-btn mt-4">
-Login
-</button>
-
-</div>
-
-</div>
-
-);
-
-}
-
-return(
-
-<div className="min-h-screen gradient-bg text-white p-10" onPaste={handlePaste}>
-
-<h1 className="text-4xl mb-10">Admin Panel</h1>
-
-<div className="card max-w-xl mb-12">
-
-<h2 className="text-xl mb-4">Add Project</h2>
-
-<input className="admin-input" placeholder="Title" value={title} onChange={e=>setTitle(e.target.value)} />
-
-<input className="admin-input" placeholder="Role" value={role} onChange={e=>setRole(e.target.value)} />
-
-<textarea className="admin-input" placeholder="Description" value={description} onChange={e=>setDescription(e.target.value)} />
-
-<input className="admin-input" placeholder="Discord link" value={discord} onChange={e=>setDiscord(e.target.value)} />
-
-<input className="admin-input" placeholder="Game link" value={game} onChange={e=>setGame(e.target.value)} />
-
-<div className="drop-zone" onDrop={handleDropAdd} onDragOver={e=>e.preventDefault()}>
-<p>Drag images or paste screenshots (max 4)</p>
-</div>
-
-<div className="flex gap-4 mt-4 flex-wrap">
-
-{images.map((img,i)=>(
-<img key={i} src={img} className="preview-img"/>
-))}
-
-</div>
-
-<button onClick={addProject} className="project-btn mt-4">
-Add Project
-</button>
-
-</div>
-
-<h2 className="text-2xl mb-6">Existing Projects</h2>
-
-{projects.map((p)=>(
-
-<div key={p.id} className="card mb-4 flex justify-between items-center">
-
-<div>
-<h3 className="font-bold">{p.title}</h3>
-<p className="text-gray-400">{p.role}</p>
-</div>
-
-<div className="flex gap-3">
-
-<button
-onClick={()=>deleteProject(p.id!)}
-className="project-btn-alt"
->
-Delete
-</button>
-
-</div>
-
-</div>
-
-))}
-
-</div>
-
-);
-
+  return fallback;
 }
