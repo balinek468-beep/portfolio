@@ -1,4 +1,5 @@
 import "./globals.css";
+import ChunkRecovery from "./components/ChunkRecovery";
 
 export default function RootLayout({
   children,
@@ -9,6 +10,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="dark">
+        <ChunkRecovery />
         {children}
       </body>
     </html>
